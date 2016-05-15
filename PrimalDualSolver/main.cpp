@@ -1,6 +1,6 @@
 /************************************************************
  *
- * Basic 2D-MLEM solver
+ * Primal Dual Method
  *
  ************************************************************/
 #include "libini.h"
@@ -48,7 +48,7 @@ inline void InitializePixel(const Geometry &geo,
 
 
 /****************************************
- * MLEM Loop
+ * Recon Loop
  */
 std::tuple<Reconstruction,Projection> APPLoop(const Geometry &geo,
 					      const Real_t primalStep,
@@ -71,13 +71,14 @@ std::tuple<Reconstruction,Projection> APPLoop(const Geometry &geo,
   Real_t cStep=0.25;
   Real_t tol=0.00001;
   Real_t maxIter=100;
-  Reconstruction nextRec =ChambolleProjectionOperator(lambda, cStep, tol, maxIter, geo, proxIn); 
+  Reconstruction nextRec =ChambolleProjectionOperator(lambda, cStep, tol, maxIter, geo, proxIn);
   for(int y=0; y<geo.volumeSize.y; y++){
     for(int x=0; x<geo.volumeSize.x; x++){
       Real_t val =std::max(0.0 ,nextRec.getValue(x,y));
       nextRec.setValue(x,y,val);
     }
   }
+
   //step 2-3
   Projection nextFproj =op.forwardProjection(nextRec);
   Projection nextResidual =nextFproj.subtract(data);

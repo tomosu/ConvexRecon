@@ -1,8 +1,3 @@
-/************************************************************
- *
- * Basic 2D-MLEM solver
- *
- ************************************************************/
 #include "Geometry.hpp"
 #include "PngReconConverter.hpp"
 #include "FP.hpp"
@@ -21,9 +16,6 @@
 #define MBF 256
 
 
-/****************************************
- * initialize pixel
- */
 inline void AddNoise(const Geometry &geo,
 		     Reconstruction *recon,
 		     int seed)
@@ -39,10 +31,10 @@ inline void AddNoise(const Geometry &geo,
       //  for(int i=0; i<800000; i++){
       Real_t noise   = sqrtf(-2 * logf(genrand1(mt)) ) * cosf(2 * M_PI * genrand1(mt)); // BoxMuller
       noise *= 0.1;
-      
+
       //int x =genrand_x(mt);
       //int y =genrand_y(mt);
-      
+
       Real_t val =recon->getValue(x,y) +noise;
       recon->setValue(x,y,val);
     }

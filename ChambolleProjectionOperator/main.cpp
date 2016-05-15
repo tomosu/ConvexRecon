@@ -1,8 +1,4 @@
-/************************************************************
- *
- * Basic 2D-MLEM solver
- *
- ************************************************************/
+
 #include "Geometry.hpp"
 #include "FP.hpp"
 #include "ProjectionOperator.hpp"

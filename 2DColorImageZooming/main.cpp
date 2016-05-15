@@ -1,8 +1,3 @@
-/************************************************************
- *
- * Basic 2D-MLEM solver
- *
- ************************************************************/
 #include "Geometry.hpp"
 #include "PngReconConverter.hpp"
 #include "FP.hpp"
@@ -64,7 +59,7 @@ int main(int argc, char **argv)
   Geometry geo(geometryPath);
   std::vector<Reconstruction> in =Png2Reconstruction(inputPath, geo);
   std::vector<Reconstruction> initial =Shrink(4, geo, in);
-  
+
   Reconstruction2Png(initialPath, geo, initial);
   std::cout << "init done" << std::endl;
 
@@ -72,7 +67,7 @@ int main(int argc, char **argv)
   //Real_t lambda=30.0;
   //Real_t lambda=10.0;
   //Real_t lambda=3.0;
-  //Real_t lambda=1.0;  
+  //Real_t lambda=1.0;
   Real_t step=0.25;
   Real_t tolerance=0.001;
   int maxIteration=1000;
