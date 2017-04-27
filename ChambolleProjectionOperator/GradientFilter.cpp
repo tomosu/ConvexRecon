@@ -29,13 +29,13 @@ Reconstruction DivergenceFilter(const Geometry &geo,
   Reconstruction ret(geo);
   for(int y=0; y<geo.volumeSize.y; y++){
     for(int x=0; x<geo.volumeSize.x; x++){
-      
+
       Real_t diff_x = (x == 0) ? in.getDxValue(x,y) : in.getDxValue(x,y) -in.getDxValue(x-1,y);
       diff_x = (x == geo.volumeSize.x-1 && x > 0 ) ? -in.getDxValue(x-1,y) : diff_x;
-      
+
       Real_t diff_y = (y == 0) ? in.getDyValue(x,y) : in.getDyValue(x,y) -in.getDyValue(x,y-1);
       diff_y = (y == geo.volumeSize.y-1 && y > 0 )? -in.getDyValue(x,y-1) : diff_y;
-      
+
       ret.setValue(x,y, diff_x +diff_y);
     }
   }

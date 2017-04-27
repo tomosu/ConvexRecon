@@ -9,7 +9,7 @@ struct ReconstructionGradient{
 
   Reconstruction dx;
   Reconstruction dy;
-  
+
   ReconstructionGradient(){}
 
   ReconstructionGradient(const Geometry &geo)
