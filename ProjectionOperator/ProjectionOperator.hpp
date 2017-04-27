@@ -28,7 +28,7 @@ struct Projection{
 
   }
 
-  
+
   Projection(const Projection& p){
     detectorPixelNum =p.detectorPixelNum;
     projectionCount =p.projectionCount;
@@ -218,8 +218,6 @@ struct Reconstruction{
   }
 };
 
-
-
 class ProjectionOperator
 {
 private:
@@ -231,7 +229,9 @@ public:
 
   Projection forwardProjection(const Reconstruction &rec){
     Projection ret(geo);
-
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
     for(int p=0; p< geo.projectionCount; p++){
       Real_t radian = (Real_t)p / (Real_t)geo.projectionCount * M_PI * 2;
       for(int x=0; x< geo.detectorPixelNum; x++){
@@ -251,7 +251,9 @@ public:
 
   Reconstruction backwardProjection(const Projection &proj){
     Reconstruction ret(geo);
-
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
     for(int p=0; p< geo.projectionCount; p++){
       Real_t radian = (Real_t)p / (Real_t)geo.projectionCount * M_PI * 2;
       for(int x=0; x< geo.detectorPixelNum; x++){
