@@ -85,11 +85,12 @@ Projection CalcProjectionValue(const Geometry &geo,
 
 
 void AddNoise(const Geometry &geo,
-                     Real_t          noiseIntensity,
-                     Real_t          digitized_air,
-                     Projection  *proj)
+	      Real_t          noiseIntensity,
+	      Real_t          digitized_air,
+	      Projection  *proj,
+	      unsigned int seed)
 {
-  std::mt19937 mt(0);
+  std::mt19937 mt(seed);
   std::uniform_real_distribution<double> genrand1(0.0,1.0);
 
     for (int prjID = 0; prjID < geo.projectionCount; prjID++) {

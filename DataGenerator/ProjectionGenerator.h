@@ -19,4 +19,5 @@ Projection CalcProjectionValue(const Geometry &geo,
 void AddNoise(const Geometry &geo,
 	      Real_t          noiseIntensity,
 	      Real_t          digitized_air,
-	      Projection           *proj);
+	      Projection           *proj,
+	      unsigned int seed);

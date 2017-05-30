@@ -106,6 +106,20 @@ struct Projection{
     }
   }
 
+
+  void stat(){
+    Real_t mean=0.0;
+    Real_t max=-9999999;
+    Real_t min=9999999;
+    for(auto v : value){
+      mean+=v;
+      max =std::max(v,max);
+      min =std::min(v,min);
+    }
+    mean /=(Real_t)value.size();
+    std::cout << "mean:" << mean << " max:" << max << " min:" << min << std::endl;
+  }
+
 };
 
 

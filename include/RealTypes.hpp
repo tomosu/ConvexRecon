@@ -1,7 +1,7 @@
 #pragma once
 #include <cmath>
 
-using Real_t = double;
+using Real_t = float;
 
 struct Real2_t {
   Real2_t(Real_t xin=0, Real_t yin=0){x=xin, y=yin;}
