@@ -11,7 +11,7 @@ CPPSRC += libarg.cpp
 CCOPT += -std=c++11 -g3 -fopenmp -lpthread -O1 -lz
 LDOPT  = -pthread -lgomp -lz
 
-TARGET = tst
+TARGET = npy_convert
 
 INC_DIR += -I.
 INC_DIR += -I../include
