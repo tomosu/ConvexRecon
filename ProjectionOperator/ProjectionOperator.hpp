@@ -88,6 +88,15 @@ struct Projection{
   }
 
 
+  Projection add_scalar(const Real_t v) const {
+    Projection ret=*this;
+    for(int i=0; i<ret.value.size(); i++){
+      ret.value[i]+=v;
+    }
+    return std::move(ret);
+  }
+
+
   Real_t operator[](int i){
     return value[i];
   }
@@ -199,6 +208,15 @@ struct Reconstruction{
     return std::move(ret);
   }
 
+
+  Reconstruction add_scalar(const Real_t v) const {
+    Reconstruction ret=*this;
+    for(int i=0; i<ret.value.size(); i++){
+      ret.value[i]+=v;
+    }
+    return std::move(ret);
+  }
+
   Real_t operator[](int i){
     return value[i];
   }
@@ -232,6 +250,7 @@ struct Reconstruction{
   }
 };
 
+
 class ProjectionOperator
 {
 private:
@@ -257,6 +276,91 @@ public:
 	  sum += mat.length * rec.getValue(mat.index.x, mat.index.y);
 	}
 	ret.setValue(x, p, sum);
+      }
+    }
+    return std::move(ret);
+  }
+
+
+  Reconstruction backwardProjection(const Projection &proj){
+    Reconstruction ret(geo);
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for(int p=0; p< geo.projectionCount; p++){
+      Real_t radian = (Real_t)p / (Real_t)geo.projectionCount * M_PI * 2;
+      for(int x=0; x< geo.detectorPixelNum; x++){
+	FP gen(geo, x, cosf(radian), sinf(radian));
+	MatrixElement_t mat;
+	while (1) {
+	  if (!gen.GetMatrixElement(mat)) break;
+	  Real_t sum =ret.getValue(mat.index.x, mat.index.y);
+	  sum += mat.length * proj.getValue(x, p);
+	  ret.setValue(mat.index.x, mat.index.y, sum);
+	}
+      }
+    }
+    return std::move(ret);
+  }
+
+};
+
+
+
+class EmissionProjectionOperator
+{
+private:
+  Geometry geo;
+
+public:
+
+  struct RayPath{
+    RayPath() :Attenuation(0.0), Emission(0.0), Length(0.0) {}
+    RayPath(Real_t atten_in, Real_t emit_in, Real_t len_in)
+      :Attenuation(atten_in), Emission(emit_in), Length(len_in)
+    {}
+    Real_t Attenuation;
+    Real_t Emission;
+    Real_t Length;
+  };
+
+  EmissionProjectionOperator(const Geometry &geoIn) : geo(geoIn) {}
+  ~EmissionProjectionOperator(){}
+
+  Real_t path2count(std::vector<RayPath> path, const Real_t emitRatio, const Real_t attenRatio){
+    Real_t count =0.0;
+    for(int i=0; i<path.size(); i++){
+      Real_t emit =path[i].Emission *emitRatio;
+      Real_t atten =0.0;
+      for(int j=i; j<path.size(); j++){
+	atten += path[j].Attenuation *path[j].Length;
+      }
+      count += emit *exp(-atten *attenRatio);
+    }
+    return count;
+  }
+
+
+  Projection forwardProjectionWithAttenuation(const Reconstruction &recEmit, const Reconstruction &recAtten,
+					      const Real_t emitRatio, const Real_t attenRatio){
+    Projection ret(geo);
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for(int p=0; p< geo.projectionCount; p++){
+      Real_t radian = (Real_t)p / (Real_t)geo.projectionCount * M_PI * 2;
+      for(int x=0; x< geo.detectorPixelNum; x++){
+	std::vector<RayPath> path;
+	FP gen(geo, x, cosf(radian), sinf(radian));
+	MatrixElement_t mat;
+	Real_t          sum = 0.0F;
+	while (1) {
+	  if (!gen.GetMatrixElement(mat)) break;
+	  path.push_back(RayPath(recAtten.getValue(mat.index.x, mat.index.y),
+				 recEmit.getValue(mat.index.x, mat.index.y),
+				 mat.length));
+	}
+	ret.setValue(x, p, path2count(path, emitRatio, attenRatio));
       }
     }
     return std::move(ret);

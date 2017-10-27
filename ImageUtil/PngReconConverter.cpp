@@ -1,4 +1,4 @@
-#include "PngReconCOnverter.hpp"
+#include "PngReconConverter.hpp"
 
 std::vector<Reconstruction> Png2Reconstruction(const char* filename, const Geometry &geo)
 {
@@ -13,8 +13,8 @@ std::vector<Reconstruction> Png2Reconstruction(const char* filename, const Geome
   if( !(geo.volumeSize.x == width && geo.volumeSize.y == height) ){
     std::cout << "invalid size" << std::endl;
     exit(0);
-  } 
-  
+  }
+
   std::vector<Reconstruction> ret;
   for(int i=0; i<4; i++){
     ret.push_back(Reconstruction(geo));
@@ -58,4 +58,3 @@ void Reconstruction2Png(const char* filename, const Geometry &geo, std::vector<R
   if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
 
 }
-

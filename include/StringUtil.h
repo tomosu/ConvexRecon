@@ -45,4 +45,3 @@ inline std::vector<std::string> my_split(const std::string &str, const std::stri
   res.push_back( std::string(str, current, str.size()-current) );
   return res;
 }
-
