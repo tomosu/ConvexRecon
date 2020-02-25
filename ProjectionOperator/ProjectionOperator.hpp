@@ -115,19 +115,29 @@ struct Projection{
     }
   }
 
-
   void stat(){
     Real_t mean=0.0;
     Real_t max=-9999999;
     Real_t min=9999999;
+    Real_t sum =0;
     for(auto v : value){
       mean+=v;
+      sum +=v;
       max =std::max(v,max);
       min =std::min(v,min);
     }
     mean /=(Real_t)value.size();
-    std::cout << "mean:" << mean << " max:" << max << " min:" << min << std::endl;
+    std::cout << "mean:" << mean << " max:" << max << " min:" << min << " sum:" << sum << std::endl;
   }
+
+  Real_t total_count(){
+    Real_t sum =0;
+    for(auto v : value){
+      sum +=v;
+    }
+    return sum;
+  }
+
 
 };
 
@@ -247,6 +257,40 @@ struct Reconstruction{
     }
     mean /=(Real_t)value.size();
     std::cout << "mean:" << mean << " max:" << max << " min:" << min << std::endl;
+  }
+
+  void gaussian(Real_t sigma,
+		int maxWidth){
+
+    std::vector<Real_t> value_new;
+    value_new.resize(sizeX * sizeY);
+    Real_t sigma2 =sigma*sigma;
+
+    for(int y=0; y<sizeY; y++){
+      for(int x=0; x<sizeX; x++){
+	int idx =x +sizeX*y;
+	value_new[idx] =0;
+	Real_t coefSum =0.0;
+	for(int dy =-maxWidth; dy <maxWidth+1; dy++){
+	  for(int dx =-maxWidth; dx <maxWidth+1; dx++){
+	    if((x+dx >sizeX-1) | (x+dx <0) | (y+dy >sizeY-1) | (y+dy <0)){continue;}
+	    int oidx =x+dx +(y+dy)*sizeX;
+	    Real_t coef =exp(-(dx*dx +dy*dy)/sigma2);
+	    coefSum +=coef;
+	    value_new[idx] += value[oidx] *coef;
+	  }
+	}
+	value_new[idx] =value_new[idx]/coefSum;
+      }
+    }
+
+
+    for(int y=0; y<sizeY; y++){
+      for(int x=0; x<sizeX; x++){
+	int idx =x +sizeX*y;
+	value[idx] =value_new[idx];
+      }
+    }
   }
 };
 

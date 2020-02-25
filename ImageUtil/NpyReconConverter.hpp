@@ -9,4 +9,6 @@
 
 Reconstruction Npy2Reconstruction(const char* filename, const Geometry &geo);
 
+Reconstruction Npy2ReconstructionFloat32(const char* filename, const Geometry &geo);
+
 void Reconstruction2Npy(const char* filename, Reconstruction in);

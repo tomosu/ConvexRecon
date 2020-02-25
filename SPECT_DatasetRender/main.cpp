@@ -28,11 +28,39 @@
 #include <algorithm>
 #include <complex>
 #include <random>
+#include <iostream>
+#include <fstream>
 
 #define MBF 256
 
 
 
+
+/****************************************
+ * initialize pixel
+ */
+inline void InitializePixel(const Geometry &geo,
+                            const Projection &proj,
+			    Reconstruction *recon)
+{
+  // calculate mean projection value per 1 detector
+  Real_t projectionMean = 0.0F;
+  for (int i = 0; i < geo.projectionCount; i++) {
+    for (int j = 0; j < geo.detectorPixelNum; j++) {
+      projectionMean += proj.getValue(j, i);
+    }
+  }
+
+  // calculate mean atten per 1 pixel
+  Real_t initialValue = projectionMean / geo.volumeSize.x; // tekitou
+  recon->clear(initialValue);
+}
+
+
+
+/****************************************
+ * Poisson noise on projection
+ */
 void AddCountNoise(const Geometry &geo,
 		   Projection  *proj,
 		   unsigned int seed){
@@ -225,6 +253,94 @@ Reconstruction FBP(const Geometry &geo,
 
 
 
+
+/****************************************
+ * MLEM Loop
+ */
+Reconstruction MLEMLoop(const Geometry &geo,
+			const Reconstruction &nowRecEmitIm,
+			const Reconstruction &attenIm,
+			double emitRatio,
+			double attenRatio,
+			const Projection &data)
+{
+  EmissionProjectionOperator op(geo);
+
+  //FP
+  Projection fproj =op.forwardProjectionWithAttenuation(nowRecEmitIm, attenIm,
+							emitRatio, attenRatio);
+  Projection ratio(geo);
+  for (int i = 0; i < geo.projectionCount; i++) {
+    for (int j = 0; j < geo.detectorPixelNum; j++) {
+      Real_t tmp = data.getValue(j,i) / (fproj.getValue(j,i) +0.00001);
+      ratio.setValue(j, i, tmp);
+    }
+  }
+
+  //BP
+  Reconstruction numerator =op.backwardProjection(ratio);
+  Projection flat(geo);
+  flat.clear(1.0);
+  Reconstruction denominator =op.backwardProjection(flat);
+
+  Reconstruction ret(geo);
+  for(int y=0; y<geo.volumeSize.y; y++){
+    for(int x=0; x<geo.volumeSize.x; x++){
+      Real_t val =nowRecEmitIm.getValue(x,y)* numerator.getValue(x,y) / denominator.getValue(x,y);
+      ret.setValue(x,y, std::max<Real_t>(val, 0.0));
+    }
+  }
+
+  return std::move(ret);
+}
+
+
+
+/****************************************
+ * OSEM Loop
+ */
+Reconstruction OSEMLoop(int subsetNum,
+			int iteration,
+			const Geometry &geo,
+			const Reconstruction &nowRecEmitIm,
+			const Reconstruction &attenIm,
+			double emitRatio,
+			double attenRatio,
+			const Projection &data)
+{
+  int start_proj =iteration %subsetNum;
+  EmissionProjectionOperator op(geo);
+
+  //FP
+  Projection fproj =op.forwardProjectionWithAttenuation(nowRecEmitIm, attenIm,
+							emitRatio, attenRatio);
+  Projection ratio(geo);
+  for (int i = start_proj; i < geo.projectionCount; i+=subsetNum) {
+    for (int j = 0; j < geo.detectorPixelNum; j++) {
+      Real_t tmp = data.getValue(j,i) / (fproj.getValue(j,i) +0.00001);
+      ratio.setValue(j, i, tmp);
+    }
+  }
+
+  //BP
+  Reconstruction numerator =op.backwardProjection(ratio);
+  Projection flat(geo);
+  flat.clear(1.0);
+  Reconstruction denominator =op.backwardProjection(flat);
+
+  Reconstruction ret(geo);
+  for(int y=0; y<geo.volumeSize.y; y++){
+    for(int x=0; x<geo.volumeSize.x; x++){
+      Real_t val =nowRecEmitIm.getValue(x,y)* numerator.getValue(x,y) / denominator.getValue(x,y);
+      ret.setValue(x,y, std::max<Real_t>(val, 0.0));
+    }
+  }
+
+  return std::move(ret);
+}
+
+
+
 /****************************************
  * util name
  */
@@ -251,9 +367,17 @@ int main(int argc, char **argv)
   char outputDir[MBF] ="output";
   double emitRatio =0.1;
   double attenRatio =0.0001;
+  int maxIteration =40;
+  char withInitDir[MBF] ="undefined";
+  double init_gain =270000;
+
   arg.addOption("-output_dir", outputDir, MBF);
   arg.addOption("-emit_ratio", emitRatio);
   arg.addOption("-atten_ratio", attenRatio);
+  arg.addOption("-max_iteration", maxIteration);
+  arg.addOption("-with_init_dir", withInitDir, MBF);
+  arg.addOption("-init_gain", init_gain);
+
   int retcd = arg.parse(argc, argv);
   if (retcd || argc != 1) {
     printf("Usage: %s\n", argv[0]);
@@ -261,19 +385,22 @@ int main(int argc, char **argv)
   }
 
 
-
   // general
   char   geometryPath[MBF]           = "../config/geometry_128.ini";
   double noiseIntensity              = 0.25;
   Geometry geo(geometryPath);
 
-  auto petFiles =DirectryOpener(std::string("../Registration/reg_images/pet"), 1);
-  auto ctFiles =DirectryOpener(std::string("../Registration/reg_images/ct"), 1);
+  auto petFiles =DirectryOpener(std::string("../Registration/reg_images/pet_test"), 1);
+  auto ctFiles =DirectryOpener(std::string("../Registration/reg_images/ct_test"), 1);
 
   int studyNum =petFiles.getFileNum();
+  Real_t tot_cnt_mean =0;
+  Real_t tot_cnt_min =99999999999;
+  Real_t tot_cnt_max =0;
   for(int i=0; i<studyNum; i++){
 
     std::cout << "current image index:" << i << std::endl;
+
     /****************************************
      * set answer
      */
@@ -286,27 +413,212 @@ int main(int argc, char **argv)
     std::cout << "attenuation:" << std::endl;
     attenIm.stat();
 
-    /****************************************
-     * generate projection
-     */
-    //Real_t  emitRatio =0.1;
-    //Real_t  emitRatio =0.1;
-    //Real_t attenRatio =0.0001;
-    //Real_t attenRatio =0.0006;
-
     EmissionProjectionOperator epo(geo);
     Projection emitProj =epo.forwardProjectionWithAttenuation(emitIm, attenIm,
 							      emitRatio, attenRatio);
-    int seed =0;
+    int seed =i;
     AddCountNoise(geo, &emitProj, seed);
     std::cout << "emit proj:" << std::endl;
     emitProj.stat();
+    {
+      Real_t tot =emitProj.total_count();
+      tot_cnt_mean +=tot /studyNum;
+      tot_cnt_min =std::min(tot_cnt_min, tot);
+      tot_cnt_max =std::max(tot_cnt_max, tot);
+    }
+
+
+    /****************************************
+     * ML-EM
+     */
+    int iteration =maxIteration +1;
+    char algo_str[MBF];
+    if(0){
+      Reconstruction nowRecEmitIm(geo);
+      if(!strcmp(withInitDir,"undefined")){
+	sprintf(algo_str, "MLEM");
+	InitializePixel(geo, emitProj, &nowRecEmitIm);
+      }else{
+	sprintf(algo_str, "MLEM_with_init");
+	char initNpyName[MBF];
+	sprintf(initNpyName, "%s/%s", withInitDir, filename.c_str());
+	std::cout << "init npy name:" << initNpyName << std::endl;
+	nowRecEmitIm =Npy2ReconstructionFloat32(initNpyName, geo).scale(init_gain);
+	nowRecEmitIm.stat();
+      }
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =MLEMLoop(geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 10){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 20){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 50){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
+    /****************************************
+     * OS-EM
+     */
+    if(0){
+      char   algo_str[MBF];
+      int subsetNum =16;
+      Reconstruction nowRecEmitIm(geo);
+      if(!strcmp(withInitDir,"undefined")){
+	sprintf(algo_str, "OSEM");
+	InitializePixel(geo, emitProj, &nowRecEmitIm);
+      }else{
+	sprintf(algo_str, "OSEM_with_init");
+	char initNpyName[MBF];
+	sprintf(initNpyName, "%s/%s", withInitDir, filename.c_str());
+	std::cout << "init npy name:" << initNpyName << std::endl;
+	nowRecEmitIm =Npy2ReconstructionFloat32(initNpyName, geo).scale(init_gain);
+	nowRecEmitIm.stat();
+      }
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =OSEMLoop(subsetNum, iter, geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 10){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 20){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 50){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
+
+    /****************************************
+     * ML-EM with iterative smoothing
+     */
+    if(0){
+      char   algo_str[MBF]           = "MLEM_smooth";
+      Real_t sigma =0.45;
+      Real_t filtWidth =2;
+      Reconstruction nowRecEmitIm(geo);
+      InitializePixel(geo, emitProj, &nowRecEmitIm);
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =MLEMLoop(geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.gaussian(sigma, filtWidth);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 10){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 20){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 50){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
+    /****************************************
+     * OS-EM with iterative smoothing
+     */
+    if(1){
+      char   algo_str[MBF]           = "OSEM_smooth";
+      int subsetNum =16;
+      Real_t sigma =0.45;
+      Real_t filtWidth =2;
+      Reconstruction nowRecEmitIm(geo);
+      InitializePixel(geo, emitProj, &nowRecEmitIm);
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =OSEMLoop(subsetNum, iter, geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.gaussian(sigma, filtWidth);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 50){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
+    /****************************************
+     * ML-EM with smoothing
+     */
+    if(0){
+      char   algo_str[MBF]           = "MLEM_smooth";
+      Real_t sigma =0.15;
+      Real_t filtWidth =2;
+      Reconstruction nowRecEmitIm(geo);
+      InitializePixel(geo, emitProj, &nowRecEmitIm);
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =MLEMLoop(geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 50){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
+    /****************************************
+     * OS-EM with smoothing
+     */
+    if(0){
+      char   algo_str[MBF]           = "OSEM_smooth";
+      int subsetNum =16;
+      Real_t sigma =0.15;
+      Real_t filtWidth =2;
+      Reconstruction nowRecEmitIm(geo);
+      InitializePixel(geo, emitProj, &nowRecEmitIm);
+
+      for (int iter = 0; iter < iteration; iter++) {
+	clock_t start = clock();
+	nowRecEmitIm =OSEMLoop(subsetNum, iter, geo, nowRecEmitIm, attenIm, emitRatio, attenRatio, emitProj);
+	nowRecEmitIm.stat();
+	fprintf(stderr, "\r%s ==%3d-iteration: %f sec.==\n",
+		filename.c_str(), iter, (double)(clock() - start) / CLOCKS_PER_SEC );
+
+	char outPath[MBF];
+	sprintf(outPath, "./%s/%s/iter%d/%s", outputDir, algo_str, iter, filename.c_str());
+	if(iter == 50){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 100){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+	if(iter == 200){ nowRecEmitIm.gaussian(sigma, filtWidth); Reconstruction2Npy(outPath, nowRecEmitIm); }
+      }
+    }
+
+
 
 
     /****************************************
      * FBP
      */
-    {
+    if(0){
       char outPath[MBF];
       sprintf(outPath, "./%s/%s", outputDir, filename.c_str());
       Reconstruction fbpRec =FBP(geo, emitProj);
@@ -315,4 +627,14 @@ int main(int argc, char **argv)
       Reconstruction2Npy(outPath, fbpRec);
     }
   }
+
+
+  std::string output_filename = std::string(outputDir) +std::string("_count.txt");
+  std::ofstream outputfile(output_filename.c_str());
+  outputfile << "total count mean" << tot_cnt_mean << std::endl;
+  outputfile << "total_count_min" << tot_cnt_min << std::endl;
+  outputfile << "total_count_max" << tot_cnt_max << std::endl;
+  outputfile << std::endl;
+  outputfile.close();
+
 }

@@ -21,10 +21,10 @@ CROSS	?=
 AS       =$(CROSS)as
 ASOPT   ?=
 
-CC       =$(CROSS)g++-6
+CC       =$(CROSS)g++-8
 #CCOPT   += -D__LINUX__
 
-LD       =$(CROSS)g++-6
+LD       =$(CROSS)g++-8
 LDOPT	?=
 
 
